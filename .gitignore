@@ -1,0 +1,16 @@
+# Per-machine values. Copy settings.example.psd1 and edit this file locally.
+settings.local.psd1
+
+# Runtime output and backups.
+*.bak
+*.log
+wireless-status.json
+wireless-status.json.tmp
+
+# Editor and OS noise.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+

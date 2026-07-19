@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>GlazeWM Shortcuts</title>
+    <style>
+      @import url("https://www.nerdfonts.com/assets/css/webfont.css");
+      :root {
+        color-scheme: dark;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        background: #1d2021;
+        color: #ebdbb2;
+      }
+      body {
+        margin: 0;
+        padding: 28px;
+      }
+      main {
+        max-width: 900px;
+        margin: 0 auto;
+      }
+      h1 {
+        color: #fabd2f;
+        font-size: 24px;
+        margin: 0 0 22px;
+      }
+      h2 {
+        color: #d79921;
+        font-size: 15px;
+        margin: 26px 0 10px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      td {
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(235, 219, 178, 0.12);
+        vertical-align: top;
+      }
+      td:first-child {
+        width: 240px;
+        color: #b8bb26;
+        white-space: nowrap;
+      }
+      kbd {
+        background: #3c3836;
+        border: 1px solid rgba(235, 219, 178, 0.18);
+        color: #fbf1c7;
+        padding: 2px 6px;
+      }
+      .app {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .app .nf {
+        width: 18px;
+        color: #fabd2f;
+        font-size: 16px;
+        text-align: center;
+      }
+      .app img {
+        width: 18px;
+        height: 18px;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>GlazeWM Shortcuts</h1>
+
+      <h2>Windows</h2>
+      <table>
+        <tr><td><kbd>Alt</kbd> + <kbd>j</kbd></td><td>Next window in current workspace</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>h/l</kbd></td><td>Focus left/right</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>h/j/k/l</kbd></td><td>Move focused window</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>q</kbd></td><td>Close focused window</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>f</kbd></td><td>Toggle fullscreen</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Space</kbd></td><td>Toggle floating</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>t</kbd></td><td>Toggle tiling</td></tr>
+      </table>
+
+      <h2>Workspaces</h2>
+      <table>
+        <tr><td><kbd>Alt</kbd> + <kbd>1..9</kbd></td><td>Switch workspace</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>1..9</kbd></td><td>Move window to workspace and follow it</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>,</kbd> / <kbd>.</kbd></td><td>Previous/next active workspace</td></tr>
+      </table>
+
+      <h2>Launchers</h2>
+      <table>
+        <tr><td><kbd>Alt</kbd> + <kbd>Enter</kbd></td><td><span class="app"><i class="nf nf-md-terminal"></i>Windows Terminal</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>c</kbd></td><td><span class="app"><img src="./guide-assets/codex.png" alt="" />New Codex window in current workspace</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>v</kbd></td><td><span class="app"><i class="nf nf-md-console"></i>Claude Code</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>v</kbd></td><td><span class="app"><i class="nf nf-md-vpn"></i>VPN connection</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>k</kbd></td><td><span class="app"><i class="nf nf-md-chip"></i>KiCad</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>o</kbd></td><td><span class="app"><i class="nf nf-md-cube_outline"></i>Onshape</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>m</kbd></td><td><span class="app"><i class="nf nf-md-view_dashboard"></i>Project management</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>g</kbd></td><td><span class="app"><i class="nf nf-dev-gitlab"></i>Source control</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>b</kbd></td><td><span class="app"><i class="nf nf-md-printer_3d"></i>Bambu Studio</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>b</kbd></td><td><span class="app"><img src="./guide-assets/brave.png" alt="" />New Brave window</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>w</kbd></td><td><span class="app"><i class="nf nf-md-wireshark"></i>Wireshark</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>t</kbd></td><td><span class="app"><i class="nf nf-md-earth"></i>Google Earth Pro</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>i</kbd></td><td><span class="app"><i class="nf nf-md-map"></i>QGIS</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>s</kbd></td><td><span class="app"><i class="nf nf-md-monitor_screenshot"></i>Screenshot active window to clipboard</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>p</kbd></td><td><span class="app"><i class="nf nf-md-video"></i>OBS Studio</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>d</kbd></td><td><span class="app"><i class="nf nf-md-rocket_launch"></i>PowerToys Run</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>e</kbd></td><td><span class="app"><i class="nf nf-md-folder_terminal"></i>Yazi file manager</span></td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>g</kbd></td><td><span class="app"><i class="nf nf-md-keyboard"></i>This guide</span></td></tr>
+      </table>
+
+      <h2>WM Control</h2>
+      <table>
+        <tr><td><kbd>Alt</kbd> + <kbd>r</kbd></td><td>Resize mode, then use h/j/k/l or arrows</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>r</kbd></td><td>Reload GlazeWM config</td></tr>
+        <tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>e</kbd></td><td>Exit GlazeWM</td></tr>
+      </table>
+
+      <h2>Brave</h2>
+      <table>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>l</kbd></td><td>Focus address bar</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>t</kbd></td><td>New tab</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>w</kbd></td><td>Close tab</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>t</kbd></td><td>Reopen closed tab</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>Tab</kbd></td><td>Next tab</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd></td><td>Previous tab</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>n</kbd></td><td>Private window</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Delete</kbd></td><td>Clear browsing data</td></tr>
+      </table>
+
+      <h2>Codex</h2>
+      <table>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>n</kbd></td><td>New chat</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>n</kbd></td><td>New Codex window</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>u</kbd></td><td>Show remaining Codex usage and reset times</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>k</kbd></td><td>Open command menu</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>p</kbd></td><td>Open command menu</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>p</kbd></td><td>Search files</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>g</kbd></td><td>Search chats</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>w</kbd></td><td>Close Codex tab/window</td></tr>
+      </table>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,20 @@
+name: Validate desktop profile
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source
+        shell: powershell
+        run: .\test-desktop-profile.ps1 -SourceOnly
+      - name: Render portable runtime
+        shell: powershell
+        run: .\install.ps1 -RuntimeOnly -InstallRoot "$env:RUNNER_TEMP\larbs-windows" -SettingsPath .\settings.example.psd1

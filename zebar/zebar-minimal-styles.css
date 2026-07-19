@@ -1,0 +1,165 @@
+@import 'https://www.nerdfonts.com/assets/css/webfont.css';
+
+:root {
+  color-scheme: dark;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  color: #ebdbb2;
+  --accent: {{ACCENT_BASE}};
+  --accent-bright: {{ACCENT_BRIGHT}};
+  --accent-text: {{ACCENT_TEXT}};
+}
+
+html,
+body,
+#bar {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  user-select: none;
+}
+
+#bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  background: rgba(29, 32, 33, 0.94);
+  border-bottom: 1px solid rgba({{ACCENT_BASE_RGB}}, 0.62);
+}
+
+.left,
+.right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.right {
+  justify-content: flex-end;
+}
+
+.pill,
+.workspace {
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  border: 1px solid rgba(235, 219, 178, 0.12);
+  background: rgba(60, 56, 54, 0.72);
+  color: #ebdbb2;
+  font: inherit;
+}
+
+.pill {
+  padding: 0 8px;
+}
+
+.action {
+  gap: 6px;
+  cursor: pointer;
+}
+
+.action:hover {
+  border-color: rgba({{ACCENT_BRIGHT_RGB}}, 0.72);
+  color: var(--accent-text);
+}
+
+.action.offline {
+  color: #a89984;
+  border-color: rgba(168, 153, 132, 0.14);
+}
+
+.action.offline i {
+  color: #a89984;
+}
+
+.pill i,
+.time i {
+  color: var(--accent-bright);
+  font-size: 13px;
+  margin-right: 0;
+}
+
+.time {
+  gap: 6px;
+  color: #d5c4a1;
+  white-space: nowrap;
+}
+
+.workspaces {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.workspace {
+  min-width: 26px;
+  justify-content: center;
+  padding: 0 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.workspace.displayed {
+  border-color: rgba({{ACCENT_BASE_RGB}}, 0.55);
+}
+
+.workspace.focused {
+  color: #fbf1c7;
+  background: var(--accent);
+  border-color: var(--accent-bright);
+}
+
+.windows {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.window {
+  height: 24px;
+  max-width: 190px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(235, 219, 178, 0.1);
+  background: rgba(40, 40, 40, 0.72);
+  color: #d5c4a1;
+  font: inherit;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.window i {
+  color: var(--accent-bright);
+  flex: 0 0 auto;
+  font-size: 13px;
+}
+
+.window span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.window:hover {
+  border-color: rgba({{ACCENT_BRIGHT_RGB}}, 0.72);
+  color: var(--accent-text);
+}
+
+.window.focused {
+  color: var(--accent-text);
+  border-color: rgba({{ACCENT_BRIGHT_RGB}}, 0.86);
+}

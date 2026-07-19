@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="bar">
+      <div class="left">
+        <div id="workspaces" class="workspaces"></div>
+        <div id="windows" class="windows"></div>
+      </div>
+      <div class="right">
+        <button id="network" class="pill action" title="Open Wi-Fi settings">net --</button>
+        <button id="bluetooth" class="pill action" title="Open Bluetooth settings">bt --</button>
+        <button id="volume" class="pill action" title="Open sound settings">vol --</button>
+        <button id="battery" class="pill action" title="Open battery settings">bat --</button>
+        <span id="date-block" class="pill time"><i class="nf nf-md-calendar_month_outline"></i>--/--/----</span>
+        <span id="clock" class="pill time">--:--</span>
+        <span id="utc-clock" class="pill time">UTC --:--</span>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as zebar from 'https://esm.sh/zebar@3.0';
+
+      const providers = zebar.createProviderGroup({
+        glazewm: { type: 'glazewm' },
+        network: { type: 'network' },
+        audio: { type: 'audio' },
+        battery: { type: 'battery' },
+        date: { type: 'date', formatting: 'EEE dd MMM  HH:mm' },
+      });
+
+      const workspacesEl = document.getElementById('workspaces');
+      const windowsEl = document.getElementById('windows');
+      const dateEl = document.getElementById('date-block');
+      const clockEl = document.getElementById('clock');
+      const utcClockEl = document.getElementById('utc-clock');
+      const networkEl = document.getElementById('network');
+      const bluetoothEl = document.getElementById('bluetooth');
+      const volumeEl = document.getElementById('volume');
+      const batteryEl = document.getElementById('battery');
+
+      networkEl.onclick = () => openSettings('ms-settings:network-wifi');
+      bluetoothEl.onclick = () => openSettings('ms-settings:bluetooth');
+      volumeEl.onclick = () => openSettings('ms-settings:sound');
+      batteryEl.onclick = () => openSettings('ms-settings:batterysaver');
+
+      let bluetoothAvailable = null;
+      let wirelessStatus = null;
+
+      updateBluetoothAvailability();
+      updateWirelessStatus();
+      setInterval(updateBluetoothAvailability, 30000);
+      setInterval(updateWirelessStatus, 5000);
+
+      providers.onOutput(render);
+      render();
+
+      function openSettings(uri) {
+        zebar.shellExec('explorer.exe', uri).catch(error => {
+          console.error(`Failed to open ${uri}`, error);
+        });
+      }
+
+      function render() {
+        const output = providers.outputMap;
+
+        if (output.glazewm) {
+          workspacesEl.replaceChildren(
+            ...output.glazewm.currentWorkspaces.map(workspace => {
+              const button = document.createElement('button');
+              button.textContent = workspace.displayName ?? workspace.name;
+              button.className = [
+                'workspace',
+                workspace.isDisplayed ? 'displayed' : '',
+                workspace.hasFocus ? 'focused' : '',
+              ].join(' ');
+              button.onclick = () => output.glazewm.runCommand(`focus --workspace ${workspace.name}`);
+              return button;
+            }),
+          );
+
+          const focusedWorkspace = output.glazewm.currentWorkspaces.find(
+            workspace => workspace.hasFocus || workspace.isDisplayed,
+          );
+          const windows = collectWindows(focusedWorkspace?.children ?? []);
+          windowsEl.replaceChildren(
+            ...windows.map(window => {
+              const button = document.createElement('button');
+              button.className = `window ${window.hasFocus ? 'focused' : ''}`;
+              button.title = window.title || window.processName || 'Window';
+              button.innerHTML = `<i class="nf ${windowIcon(window)}"></i><span>${escapeHtml(windowLabel(window))}</span>`;
+              button.onclick = () =>
+                output.glazewm.runCommand(`focus --container-id ${window.id}`);
+              return button;
+            }),
+          );
+        }
+
+        const now = new Date();
+        dateEl.innerHTML = `<i class="nf nf-md-calendar_month_outline"></i>${formatDate(now)}`;
+        clockEl.innerHTML = `<i class="nf nf-md-clock_outline"></i>${formatLocalTime(now)}`;
+        utcClockEl.textContent = `UTC ${formatUtcTime(now)}`;
+
+        const defaultDevice = output.audio?.defaultPlaybackDevice;
+        renderNetwork(output.network, wirelessStatus?.wifi);
+        renderBluetooth(defaultDevice, wirelessStatus?.bluetooth);
+
+        if (defaultDevice) {
+          const muted = defaultDevice.isMuted ? 'muted' : `${Math.round(defaultDevice.volume)}%`;
+          volumeEl.innerHTML = `<i class="nf nf-md-volume_high"></i>${muted}`;
+        } else {
+          volumeEl.innerHTML = '<i class="nf nf-md-volume_off"></i>vol --';
+        }
+
+        if (output.battery) {
+          const charging = output.battery.isCharging ? '+' : '';
+          batteryEl.innerHTML = `<i class="nf nf-fa-battery_half"></i>${Math.round(output.battery.chargePercent)}%${charging}`;
+        } else {
+          batteryEl.innerHTML = '<i class="nf nf-md-power_plug"></i>ac';
+        }
+      }
+
+      function collectWindows(containers) {
+        return containers.flatMap(container => {
+          if (container.type === 'window') return [container];
+          return collectWindows(container.children ?? []);
+        });
+      }
+
+      function windowLabel(window) {
+        const source = window.title || window.processName || 'window';
+        const label = source
+          .replace(/\s+-\s+Brave$/, '')
+          .replace(/\s+-\s+Google Chrome$/, '')
+          .replace(/\s+-\s+Visual Studio Code$/, '')
+          .trim();
+        return label.length > 34 ? `${label.slice(0, 31)}...` : label;
+      }
+
+      function windowIcon(window) {
+        const process = (window.processName || '').toLowerCase();
+        const title = (window.title || '').toLowerCase();
+        if (process.includes('brave')) return 'nf-md-web';
+        if (process.includes('codex')) return 'nf-md-console';
+        if (process.includes('explorer')) return 'nf-md-folder';
+        if (process.includes('windowsterminal') || process.includes('powershell') || process.includes('cmd')) {
+          return 'nf-md-terminal';
+        }
+        if (process.includes('code')) return 'nf-dev-visualstudio';
+        if (process.includes('excel')) return 'nf-md-microsoft_excel';
+        if (process.includes('winword')) return 'nf-md-file_word';
+        if (process.includes('powerpnt')) return 'nf-md-file_powerpoint';
+        if (title.includes('youtube')) return 'nf-md-youtube';
+        return 'nf-md-window_maximize';
+      }
+
+      function renderNetwork(network, wifiStatus) {
+        if (wifiStatus) {
+          if (wifiStatus.state === 'connected') {
+            const strength = wifiStatus.strength;
+            const icon = wifiIcon(strength);
+            const suffix = strength == null ? '' : ` ${Math.round(strength)}%`;
+            networkEl.innerHTML = `<i class="nf ${icon}"></i>${escapeHtml(wifiStatus.label || 'wifi')}${suffix}`;
+            networkEl.title = wifiStatus.detail || 'Wi-Fi connected';
+            networkEl.classList.toggle('offline', false);
+            return;
+          }
+
+          if (wifiStatus.state === 'disconnected') {
+            networkEl.innerHTML = '<i class="nf nf-md-wifi_alert"></i>wifi --';
+            networkEl.title = wifiStatus.detail || 'Wi-Fi not connected';
+            networkEl.classList.toggle('offline', true);
+            return;
+          }
+
+          if (wifiStatus.state === 'off') {
+            networkEl.innerHTML = '<i class="nf nf-md-wifi_off"></i>wifi off';
+            networkEl.title = wifiStatus.detail || 'Wi-Fi off or unavailable';
+            networkEl.classList.toggle('offline', true);
+            return;
+          }
+        }
+
+        const iface = network?.defaultInterface;
+        const gateway = network?.defaultGateway;
+
+        if (iface?.type === 'wifi') {
+          const ssid = gateway?.ssid || iface.friendlyName || iface.name || 'wifi';
+          const strength = gateway?.signalStrength;
+          const icon = wifiIcon(strength);
+          const suffix = strength == null ? '' : ` ${Math.round(strength)}%`;
+          networkEl.innerHTML = `<i class="nf ${icon}"></i>${escapeHtml(ssid)}${suffix}`;
+          networkEl.title = `Wi-Fi connected${strength == null ? '' : ` - ${Math.round(strength)}%`}`;
+          networkEl.classList.toggle('offline', false);
+          return;
+        }
+
+        if (iface?.type === 'ethernet') {
+          networkEl.innerHTML = '<i class="nf nf-md-ethernet_cable"></i>eth';
+          networkEl.title = 'Ethernet connected';
+          networkEl.classList.toggle('offline', false);
+          return;
+        }
+
+        if (network?.interfaces?.some(item => item.type === 'wifi')) {
+          networkEl.innerHTML = '<i class="nf nf-md-wifi_alert"></i>wifi --';
+          networkEl.title = 'Wi-Fi not connected';
+          networkEl.classList.toggle('offline', true);
+          return;
+        }
+
+        networkEl.innerHTML = '<i class="nf nf-md-wifi_off"></i>wifi off';
+        networkEl.title = 'Wi-Fi off or unavailable';
+        networkEl.classList.toggle('offline', true);
+      }
+
+      function renderBluetooth(defaultDevice, bluetoothStatus) {
+        if (bluetoothStatus) {
+          if (bluetoothStatus.state === 'connected') {
+            bluetoothEl.innerHTML = `<i class="nf nf-md-bluetooth_connect"></i>${escapeHtml(shortLabel(bluetoothStatus.label || 'bt'))}`;
+            bluetoothEl.title = bluetoothStatus.detail || `Bluetooth connected: ${bluetoothStatus.label}`;
+            bluetoothEl.classList.toggle('offline', false);
+            return;
+          }
+
+          if (bluetoothStatus.state === 'off') {
+            bluetoothEl.innerHTML = '<i class="nf nf-md-bluetooth_off"></i>bt off';
+            bluetoothEl.title = bluetoothStatus.detail || 'Bluetooth off or unavailable';
+            bluetoothEl.classList.toggle('offline', true);
+            return;
+          }
+
+          if (bluetoothStatus.state === 'on') {
+            bluetoothEl.innerHTML = '<i class="nf nf-md-bluetooth"></i>bt --';
+            bluetoothEl.title = bluetoothStatus.detail || 'Bluetooth on, no connected device detected';
+            bluetoothEl.classList.toggle('offline', false);
+            return;
+          }
+        }
+
+        const bluetoothAudio = getBluetoothAudioLabel(defaultDevice);
+
+        if (bluetoothAudio) {
+          bluetoothEl.innerHTML = `<i class="nf nf-md-bluetooth_connect"></i>${escapeHtml(bluetoothAudio)}`;
+          bluetoothEl.title = `Bluetooth connected: ${bluetoothAudio}`;
+          bluetoothEl.classList.toggle('offline', false);
+          return;
+        }
+
+        if (bluetoothAvailable === false) {
+          bluetoothEl.innerHTML = '<i class="nf nf-md-bluetooth_off"></i>bt off';
+          bluetoothEl.title = 'Bluetooth off or unavailable';
+          bluetoothEl.classList.toggle('offline', true);
+          return;
+        }
+
+        bluetoothEl.innerHTML = '<i class="nf nf-md-bluetooth"></i>bt --';
+        bluetoothEl.title = 'Bluetooth on, no connected audio device detected';
+        bluetoothEl.classList.toggle('offline', false);
+      }
+
+      function wifiIcon(strength) {
+        if (strength == null) return 'nf-md-wifi';
+        if (strength >= 75) return 'nf-md-wifi_strength_4';
+        if (strength >= 50) return 'nf-md-wifi_strength_3';
+        if (strength >= 25) return 'nf-md-wifi_strength_2';
+        return 'nf-md-wifi_strength_1';
+      }
+
+      function getBluetoothAudioLabel(device) {
+        if (!device) return '';
+        const name = device.name || device.deviceName || device.description || '';
+        const lower = name.toLowerCase();
+        if (!lower.includes('bluetooth') && !lower.includes('bt')) return '';
+        return name
+          .replace(/\s*\(Bluetooth\)\s*/i, '')
+          .replace(/\s*Bluetooth\s*/i, '')
+          .trim()
+          .slice(0, 18);
+      }
+
+      function shortLabel(value) {
+        return value.length > 18 ? `${value.slice(0, 15)}...` : value;
+      }
+
+      function updateWirelessStatus() {
+        fetch(`./wireless-status.json?t=${Date.now()}`, { cache: 'no-store' })
+          .then(response => response.ok ? response.json() : null)
+          .then(status => {
+            if (status) {
+              wirelessStatus = status;
+              render();
+            }
+          })
+          .catch(() => {});
+      }
+
+      function updateBluetoothAvailability() {
+        if (!navigator.bluetooth?.getAvailability) {
+          bluetoothAvailable = false;
+          return;
+        }
+
+        navigator.bluetooth.getAvailability()
+          .then(available => {
+            bluetoothAvailable = available;
+            render();
+          })
+          .catch(() => {
+            bluetoothAvailable = null;
+          });
+      }
+
+      function escapeHtml(value) {
+        return value.replace(/[&<>"']/g, char => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        })[char]);
+      }
+
+      function formatLocalTime(date) {
+        return date.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+
+      function formatDate(date) {
+        return [
+          String(date.getDate()).padStart(2, '0'),
+          String(date.getMonth() + 1).padStart(2, '0'),
+          date.getFullYear(),
+        ].join('/');
+      }
+
+      function formatUtcTime(date) {
+        return date.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+          timeZone: 'UTC',
+        });
+      }
+    </script>
+  </body>
+</html>

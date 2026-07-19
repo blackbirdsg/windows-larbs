@@ -1,0 +1,5 @@
+[mgr]
+prepend_keymap = [
+  { on = "<C-t>", run = 'shell --orphan -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{PROFILE_ROOT}}\yazi\openers\open-terminal.ps1" %d1', desc = "Open terminal here" },
+  { on = "T",     run = 'shell --orphan -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{PROFILE_ROOT}}\yazi\openers\open-terminal.ps1" %d1', desc = "Open terminal here" },
+]

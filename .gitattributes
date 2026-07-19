@@ -1,0 +1,13 @@
+* text=auto
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.psd1 text eol=crlf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.png binary
+

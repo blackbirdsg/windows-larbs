@@ -1,0 +1,37 @@
+[opener]
+texstudio = [
+  { run = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{PROFILE_ROOT}}\yazi\openers\open-texstudio.ps1" %s', desc = "TeXstudio", for = "windows", orphan = true },
+]
+
+marktext = [
+  { run = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{PROFILE_ROOT}}\yazi\openers\open-marktext.ps1" %s', desc = "MarkText", for = "windows", orphan = true },
+]
+
+nvim = [
+  { run = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{{PROFILE_ROOT}}\yazi\openers\open-nvim.ps1" %s', desc = "Neovim", for = "windows", orphan = true },
+]
+
+open = [
+  { run = 'start "" %s1', desc = "Open", for = "windows", orphan = true },
+]
+
+reveal = [
+  { run = "explorer /select,%s1", desc = "Reveal", for = "windows", orphan = true },
+]
+
+extract = [
+  { run = "ya pub extract --list %s", desc = "Extract here" },
+]
+
+[open]
+rules = [
+  { url = "*.{tex,sty}", use = [ "texstudio", "reveal" ] },
+  { url = "*.{md,markdown,mdown,mkdn}", use = [ "marktext", "nvim", "reveal" ] },
+  { mime = "text/*", use = [ "nvim", "reveal" ] },
+  { mime = "application/{json,ndjson,javascript,wine-extension-ini}", use = [ "nvim", "reveal" ] },
+  { mime = "inode/empty", use = [ "nvim", "reveal" ] },
+  { mime = "image/*", use = [ "open", "reveal" ] },
+  { mime = "{audio,video}/*", use = [ "open", "reveal" ] },
+  { mime = "application/{zip,rar,7z*,tar,gzip,xz,zstd,bzip*,lzma,compress,archive,cpio,arj,xar,ms-cab*}", use = [ "extract", "reveal" ] },
+  { url = "*", use = [ "open", "reveal" ] },
+]
