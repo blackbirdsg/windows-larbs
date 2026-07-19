@@ -61,8 +61,10 @@ function Test-JsonFiles {
 }
 
 function Test-PublicFiles {
-  $ignoredSettings = Get-Content -LiteralPath (Join-Path $PSScriptRoot '.gitignore') -Raw
-  if ($ignoredSettings -notmatch '(?m)^settings\.local\.psd1$') {
+  # Read ignore rules as lines so CRLF checkouts on Windows behave like LF checkouts.
+  $ignoredSettings = @(Get-Content -LiteralPath (Join-Path $PSScriptRoot '.gitignore')) |
+    ForEach-Object { $_.Trim() }
+  if ('settings.local.psd1' -notin $ignoredSettings) {
     Add-Failure 'settings.local.psd1 is not ignored by Git.'
   } else {
     Add-Pass 'Per-machine settings are ignored by Git.'
