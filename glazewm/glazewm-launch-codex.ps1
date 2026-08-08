@@ -10,8 +10,6 @@ if (-not $cliResult) {
 }
 
 $cli = $cliResult.Value
-$codexProtocol = 'codex://threads/new'
-$codexAppId = 'OpenAI.Codex_2p2nqsd0c76g0!App'
 $logPath = Join-Path $env:LOCALAPPDATA 'glzr-startup\codex-launcher.log'
 
 function Write-LauncherLog {
@@ -106,57 +104,175 @@ function Wait-ForNewCodexWindow {
   return $null
 }
 
-function Select-CodexWindowForCommand {
-  param([string]$TargetWorkspaceId)
-
-  $windows = @(Get-CodexWindows)
-
-  $workspaceWindow = $windows |
-    Where-Object {
-      $_.parentId -eq $TargetWorkspaceId -and
-      $_.state.type -ne 'minimized'
-    } |
-    Select-Object -First 1
-
-  if ($workspaceWindow) {
-    return $workspaceWindow
-  }
-
-  $shownWindow = $windows |
-    Where-Object { $_.displayState -eq 'shown' -and $_.state.type -ne 'minimized' } |
-    Select-Object -First 1
-
-  if ($shownWindow) {
-    return $shownWindow
-  }
-
-  return $windows | Select-Object -First 1
+function Initialize-CodexAutomation {
+  Add-Type -AssemblyName UIAutomationClient
+  Add-Type -AssemblyName UIAutomationTypes
 }
 
-function Invoke-CodexNewWindowShortcut {
-  param([string]$WindowId)
+function Test-CodexWindowHasStartupError {
+  param($Window)
 
-  & $cli command focus --container-id $WindowId | Out-Null
-
-  for ($i = 0; $i -lt 15; $i++) {
-    $focusedWindow = Get-CodexWindows | Where-Object { $_.id -eq $WindowId } | Select-Object -First 1
-    if ($focusedWindow.hasFocus) {
-      break
-    }
-    Start-Sleep -Milliseconds 100
-  }
-
-  Start-Sleep -Milliseconds 300
-  $shell = New-Object -ComObject WScript.Shell
-  $shell.SendKeys('^+n')
-}
-
-function Start-CodexFromStableRegistration {
   try {
-    Start-Process -FilePath $codexProtocol
+    Initialize-CodexAutomation
+    $root = [Windows.Automation.AutomationElement]::FromHandle(
+      [IntPtr]::new([int64]$Window.handle)
+    )
+    if (-not $root) {
+      return $false
+    }
+
+    $errorCondition = [Windows.Automation.PropertyCondition]::new(
+      [Windows.Automation.AutomationElement]::NameProperty,
+      'Oops, an error has occurred'
+    )
+    return $null -ne $root.FindFirst(
+      [Windows.Automation.TreeScope]::Descendants,
+      $errorCondition
+    )
   } catch {
-    Start-Process -FilePath 'explorer.exe' -ArgumentList @("shell:AppsFolder\$codexAppId")
+    return $false
   }
+}
+
+function Get-UsableCodexWindowInWorkspace {
+  param([string]$WorkspaceId)
+
+  $candidates = @(Get-CodexWindows | Where-Object { $_.parentId -eq $WorkspaceId })
+  foreach ($candidate in $candidates) {
+    if (Test-CodexWindowHasStartupError $candidate) {
+      Write-LauncherLog "Closing failed Codex window '$($candidate.id)' before relaunch."
+      & $cli command --id $candidate.id close | Out-Null
+      Start-Sleep -Milliseconds 250
+      continue
+    }
+
+    return $candidate
+  }
+
+  return $null
+}
+
+function Resolve-CodexExecutable {
+  $package = Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue |
+    Sort-Object Version -Descending |
+    Select-Object -First 1
+  if ($package) {
+    $candidate = Join-Path $package.InstallLocation 'app\ChatGPT.exe'
+    if (Test-Path -LiteralPath $candidate) {
+      return $candidate
+    }
+  }
+
+  $runningExecutable = Get-CimInstance Win32_Process -Filter "Name = 'ChatGPT.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ExecutablePath } |
+    Select-Object -First 1 -ExpandProperty ExecutablePath
+  if ($runningExecutable -and (Test-Path -LiteralPath $runningExecutable)) {
+    return $runningExecutable
+  }
+
+  throw 'The installed ChatGPT executable was not found.'
+}
+
+function Start-CodexWorkspaceInstance {
+  param([string]$WorkspaceName)
+
+  $profileKey = ($WorkspaceName -replace '[^A-Za-z0-9._-]', '_').Trim('_')
+  if (-not $profileKey) {
+    $profileKey = 'default'
+  }
+
+  $instancePath = Join-Path $env:LOCALAPPDATA "larbs-windows-state\codex-instances\workspace-$profileKey"
+  New-Item -ItemType Directory -Path $instancePath -Force | Out-Null
+
+  $executable = Resolve-CodexExecutable
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $executable
+  $startInfo.Arguments = '--user-data-dir="{0}"' -f $instancePath
+  $startInfo.WorkingDirectory = Split-Path -Parent $executable
+  $startInfo.UseShellExecute = $false
+  $startInfo.EnvironmentVariables['CODEX_ELECTRON_USER_DATA_PATH'] = $instancePath
+
+  $process = [Diagnostics.Process]::Start($startInfo)
+  if (-not $process) {
+    throw "Failed to start the Codex instance for workspace '$WorkspaceName'."
+  }
+
+  Write-LauncherLog "Started isolated Codex process '$($process.Id)' for workspace '$WorkspaceName'."
+}
+
+function Enable-CodexWorkMode {
+  param(
+    $Window,
+    [int]$TimeoutMilliseconds = 30000
+  )
+
+  Initialize-CodexAutomation
+  $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+
+  do {
+    try {
+      $root = [Windows.Automation.AutomationElement]::FromHandle(
+        [IntPtr]::new([int64]$Window.handle)
+      )
+      if ($root) {
+        $errorCondition = [Windows.Automation.PropertyCondition]::new(
+          [Windows.Automation.AutomationElement]::NameProperty,
+          'Oops, an error has occurred'
+        )
+        if ($root.FindFirst([Windows.Automation.TreeScope]::Descendants, $errorCondition)) {
+          throw 'The isolated Codex window entered the renderer error screen.'
+        }
+
+        $workCondition = [Windows.Automation.AndCondition]::new(@(
+          [Windows.Automation.PropertyCondition]::new(
+            [Windows.Automation.AutomationElement]::NameProperty,
+            'Work'
+          ),
+          [Windows.Automation.PropertyCondition]::new(
+            [Windows.Automation.AutomationElement]::ControlTypeProperty,
+            [Windows.Automation.ControlType]::Button
+          )
+        ))
+        $workButton = $root.FindFirst(
+          [Windows.Automation.TreeScope]::Descendants,
+          $workCondition
+        )
+        if ($workButton) {
+          $toggle = $workButton.GetCurrentPattern(
+            [Windows.Automation.TogglePattern]::Pattern
+          )
+          if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) {
+            $toggle.Toggle()
+            Start-Sleep -Milliseconds 750
+          }
+          return $true
+        }
+      }
+    } catch [Windows.Automation.ElementNotAvailableException] {
+      # The renderer can replace its accessibility tree while loading.
+    }
+
+    Start-Sleep -Milliseconds 350
+  } while ([DateTime]::UtcNow -lt $deadline)
+
+  return $false
+}
+
+function Focus-WorkspaceIfNeeded {
+  param([string]$WorkspaceName)
+
+  $workspace = (Invoke-GlazeQuery @('query', 'workspaces')).data.workspaces |
+    Where-Object { $_.name -eq $WorkspaceName } |
+    Select-Object -First 1
+  if (-not $workspace) {
+    return $false
+  }
+
+  if (-not $workspace.hasFocus) {
+    & $cli command focus --workspace $WorkspaceName | Out-Null
+  }
+
+  return $true
 }
 
 function Move-CodexWindowToTarget {
@@ -184,7 +300,7 @@ function Move-CodexWindowToTarget {
   }
 
   & $cli command --id $WindowId set-tiling | Out-Null
-  & $cli command focus --workspace $TargetWorkspace | Out-Null
+  Focus-WorkspaceIfNeeded $TargetWorkspace | Out-Null
   & $cli command focus --container-id $WindowId | Out-Null
 
   return $placed
@@ -196,7 +312,7 @@ function Return-ToTargetWorkspace {
     [string]$TargetContainerId
   )
 
-  & $cli command focus --workspace $TargetWorkspace | Out-Null
+  Focus-WorkspaceIfNeeded $TargetWorkspace | Out-Null
   if ($TargetContainerId) {
     & $cli command focus --container-id $TargetContainerId | Out-Null
   }
@@ -234,35 +350,31 @@ try {
     $targetContainerId = $targetWorkspaceObject.childFocusOrder[0]
   }
 
+  $existingCodexWindow = Get-UsableCodexWindowInWorkspace $targetWorkspaceObject.id
+  if ($existingCodexWindow) {
+    Focus-WorkspaceIfNeeded $targetWorkspace | Out-Null
+    & $cli command focus --container-id $existingCodexWindow.id | Out-Null
+    Write-LauncherLog "Focused existing Codex window '$($existingCodexWindow.id)' in workspace '$targetWorkspace'."
+    return
+  }
+
   $beforeCodexIds = @(Get-CodexWindows | ForEach-Object { $_.id })
-  $existingCodexWindow = Select-CodexWindowForCommand $targetWorkspaceObject.id
   $newWindow = $null
 
   Write-LauncherLog "Alt+C requested from workspace '$targetWorkspace'; existing windows: $($beforeCodexIds.Count)."
 
-  if ($existingCodexWindow) {
-    Invoke-CodexNewWindowShortcut $existingCodexWindow.id
-    $newWindow = Wait-ForNewCodexWindow $beforeCodexIds 10000
-
-    if (-not $newWindow) {
-      Write-LauncherLog 'First Ctrl+Shift+N attempt produced no managed window; retrying once.'
-      $existingCodexWindow = Select-CodexWindowForCommand $targetWorkspaceObject.id
-      if ($existingCodexWindow) {
-        Invoke-CodexNewWindowShortcut $existingCodexWindow.id
-        $newWindow = Wait-ForNewCodexWindow $beforeCodexIds 10000
-      }
-    }
-  } else {
-    Start-CodexFromStableRegistration
-    $newWindow = Wait-ForNewCodexWindow $beforeCodexIds 30000
-  }
+  Start-CodexWorkspaceInstance $targetWorkspace
+  $newWindow = Wait-ForNewCodexWindow $beforeCodexIds 45000
 
   if ($newWindow) {
     $placed = Move-CodexWindowToTarget $newWindow.id $targetWorkspace $targetWorkspaceObject.id
-    if ($placed) {
-      Write-LauncherLog "Created window '$($newWindow.id)' in workspace '$targetWorkspace'."
+    $workModeReady = Enable-CodexWorkMode $newWindow
+    if (-not $workModeReady) {
+      Write-LauncherLog "Created window '$($newWindow.id)', but its Work mode control did not become ready."
+    } elseif ($placed) {
+      Write-LauncherLog "Created isolated Work window '$($newWindow.id)' in workspace '$targetWorkspace'."
     } else {
-      Write-LauncherLog "Created window '$($newWindow.id)', but GlazeWM did not confirm placement in workspace '$targetWorkspace'."
+      Write-LauncherLog "Created isolated Work window '$($newWindow.id)', but GlazeWM did not confirm placement in workspace '$targetWorkspace'."
     }
   } else {
     Return-ToTargetWorkspace $targetWorkspace $targetContainerId

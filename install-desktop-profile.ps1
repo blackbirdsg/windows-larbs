@@ -57,7 +57,18 @@ function Backup-IfExists {
   $destination = Join-Path $backupDir $name
   $item = Get-Item -LiteralPath $Path
   if ($item.PSIsContainer) {
-    Copy-Item -LiteralPath $Path -Destination $destination -Recurse -Force
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $resolvedInstallRoot = $InstallRoot.TrimEnd('\')
+    if ($resolvedPath -eq $resolvedInstallRoot) {
+      New-Item -ItemType Directory -Force -Path $destination | Out-Null
+      Get-ChildItem -LiteralPath $Path -Force |
+        Where-Object { $_.Name -ne 'codex-instances' } |
+        ForEach-Object {
+          Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $destination $_.Name) -Recurse -Force
+        }
+    } else {
+      Copy-Item -LiteralPath $Path -Destination $destination -Recurse -Force
+    }
   } else {
     Copy-Item -LiteralPath $Path -Destination $destination -Force
   }

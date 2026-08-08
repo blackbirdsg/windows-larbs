@@ -105,7 +105,9 @@ binding_modes:
 
 keybindings:
   - commands: ['focus --direction left']
-    bindings: ['alt+h', 'alt+left']
+    bindings: ['alt+h']
+  - commands: ['shell-exec --hide-window powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{{PROFILE_ROOT}}\glazewm\glazewm-browser-back.ps1"']
+    bindings: ['alt+left']
   - commands: ['shell-exec --hide-window powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{{PROFILE_ROOT}}\glazewm\glazewm-cycle-window.ps1" next']
     bindings: ['alt+j']
   - commands: ['shell-exec --hide-window powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{{PROFILE_ROOT}}\glazewm\glazewm-launch-app.ps1" -Name KiCad']
@@ -115,7 +117,9 @@ keybindings:
   - commands: ['focus --direction up']
     bindings: ['alt+up']
   - commands: ['focus --direction right']
-    bindings: ['alt+l', 'alt+right']
+    bindings: ['alt+l']
+  - commands: ['shell-exec --hide-window powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{{PROFILE_ROOT}}\glazewm\glazewm-browser-back.ps1" -Direction forward']
+    bindings: ['alt+right']
 
   - commands: ['move --direction left']
     bindings: ['alt+shift+h', 'alt+shift+left']
@@ -140,7 +144,7 @@ keybindings:
     bindings: ['alt+shift+t']
   - commands: ['toggle-fullscreen']
     bindings: ['alt+f']
-  - commands: ['shell-exec --hide-window powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{{PROFILE_ROOT}}\glazewm\glazewm-launch-openproject.ps1"']
+  - commands: ['shell-exec --hide-window powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{{PROFILE_ROOT}}\glazewm\glazewm-focus-pm.ps1"']
     bindings: ['alt+m']
   - commands: ['close']
     bindings: ['alt+q', 'alt+shift+q']
