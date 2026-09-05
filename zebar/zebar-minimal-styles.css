@@ -23,7 +23,8 @@ body {
 }
 
 #bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px minmax(0, 1fr);
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -42,7 +43,61 @@ body {
 }
 
 .right {
-  justify-content: flex-end;
+  justify-content: safe flex-end;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.left {
+  overflow: hidden;
+}
+
+.right > .pill {
+  flex-shrink: 0;
+}
+
+.usage-status {
+  gap: 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  min-width: 100px;
+}
+
+#codex-usage {
+  min-width: 0;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  justify-content: space-between;
+  border-color: var(--accent-bright);
+  color: var(--accent-text);
+}
+
+.usage-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--usage-fill, 0%);
+  background: var(--accent);
+}
+
+.usage-label,
+.usage-capacity {
+  position: relative;
+  z-index: 1;
+}
+
+.usage-capacity {
+  color: #d5c4a1;
+  opacity: 0.65;
+}
+
+.usage-status.unavailable {
+  opacity: 0.6;
+}
+
+.usage-status.low {
+  color: #ff8d85;
+  border-color: #e76f68;
 }
 
 .pill,
@@ -119,6 +174,8 @@ body {
 
 .windows {
   display: flex;
+  flex: 1;
+  width: 0;
   align-items: center;
   gap: 4px;
   min-width: 0;
@@ -162,4 +219,25 @@ body {
 .window.focused {
   color: var(--accent-text);
   border-color: rgba({{ACCENT_BRIGHT_RGB}}, 0.86);
+}
+
+@media (max-width: 1600px) {
+  .right { gap: 4px; }
+  .right > .pill { padding: 0 4px; }
+  .usage-status { min-width: 84px; }
+  #network,
+  #bluetooth {
+    width: 26px;
+    justify-content: center;
+    font-size: 0;
+    gap: 0;
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 1200px) {
+  .right { gap: 3px; }
+  .right > .pill { padding: 0 3px; gap: 0; }
+  #codex-resets { min-width: 70px; }
+  .right > .pill:not(#network):not(#bluetooth) i { display: none; }
 }

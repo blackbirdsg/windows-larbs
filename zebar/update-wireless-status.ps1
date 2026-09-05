@@ -10,6 +10,9 @@ if (Test-Path -LiteralPath $profileLib) {
 }
 
 $statusPath = Join-Path $env:USERPROFILE '.glzr\zebar\minimal-local\wireless-status.json'
+. (Join-Path $PSScriptRoot 'codex-usage.ps1')
+$usagePath = Join-Path (Split-Path -Parent $statusPath) 'codex-usage.json'
+$nextUsagePoll = [datetime]::MinValue
 $preferredWifiFallbacks = @()
 if (Get-Command Get-DesktopProfileSetting -ErrorAction SilentlyContinue) {
   $preferredWifiFallbacks = @(Get-DesktopProfileSetting -Section 'Wifi' -Name 'PreferredSsidFallbacks' -Default @())
@@ -211,6 +214,14 @@ try {
 
   do {
     Write-WirelessStatus
+    if ([datetime]::UtcNow -ge $nextUsagePoll) {
+      try {
+        Update-CodexBarStatus -Path $usagePath
+      } catch {
+        # Keep wireless updates running even when the usage cache cannot be written.
+      }
+      $nextUsagePoll = [datetime]::UtcNow.AddMinutes(2)
+    }
     if ($Once) {
       break
     }

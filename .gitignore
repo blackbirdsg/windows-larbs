@@ -6,6 +6,8 @@ settings.local.psd1
 *.log
 wireless-status.json
 wireless-status.json.tmp
+codex-usage.json
+codex-usage.json.tmp
 
 # Editor and OS noise.
 .idea/

@@ -21,3 +21,8 @@ jobs:
       - name: Test native ChatGPT window helpers
         shell: powershell
         run: .\tests\test-codex-native-window.ps1
+      - name: Test Codex bar usage helpers
+        shell: powershell
+        run: .\tests\test-codex-usage.ps1
+      - name: Test Codex bar rendering
+        run: node .\tests\test-codex-bar.cjs

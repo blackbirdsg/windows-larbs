@@ -11,7 +11,13 @@
         <div id="workspaces" class="workspaces"></div>
         <div id="windows" class="windows"></div>
       </div>
+      <div id="codex-usage" class="pill usage-status usage-meter" role="progressbar" aria-label="Codex usage remaining" aria-valuemin="0" aria-valuemax="100" title="Codex usage unavailable">
+        <div class="usage-fill" aria-hidden="true"></div>
+        <span class="usage-label">Codex --</span>
+        <span class="usage-capacity" aria-hidden="true">100%</span>
+      </div>
       <div class="right">
+        <span id="codex-resets" class="pill usage-status" title="Available Codex resets unavailable"><i class="nf nf-md-restore"></i><span>Resets --</span></span>
         <button id="network" class="pill action" title="Open Wi-Fi settings">net --</button>
         <button id="bluetooth" class="pill action" title="Open Bluetooth settings">bt --</button>
         <button id="volume" class="pill action" title="Open sound settings">vol --</button>
@@ -42,6 +48,10 @@
       const bluetoothEl = document.getElementById('bluetooth');
       const volumeEl = document.getElementById('volume');
       const batteryEl = document.getElementById('battery');
+      const codexUsageEl = document.getElementById('codex-usage');
+      const codexResetsEl = document.getElementById('codex-resets');
+      let codexStatus = null;
+      let usageFetchPending = false;
 
       networkEl.onclick = () => openSettings('ms-settings:network-wifi');
       bluetoothEl.onclick = () => openSettings('ms-settings:bluetooth');
@@ -53,8 +63,10 @@
 
       updateBluetoothAvailability();
       updateWirelessStatus();
+      updateCodexUsage();
       setInterval(updateBluetoothAvailability, 30000);
       setInterval(updateWirelessStatus, 5000);
+      setInterval(updateCodexUsage, 15000);
 
       providers.onOutput(render);
       render();
@@ -67,6 +79,7 @@
 
       function render() {
         const output = providers.outputMap;
+        renderCodexUsage();
 
         if (output.glazewm) {
           workspacesEl.replaceChildren(
@@ -297,6 +310,59 @@
             }
           })
           .catch(() => {});
+      }
+
+      async function updateCodexUsage() {
+        if (usageFetchPending) return;
+        usageFetchPending = true;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        try {
+          const response = await fetch(`./codex-usage.json?t=${Date.now()}`, {
+            cache: 'no-store', signal: controller.signal,
+          });
+          if (!response.ok) throw new Error('Usage cache unavailable');
+          codexStatus = await response.json();
+        } catch {
+          codexStatus = null;
+        } finally {
+          clearTimeout(timeout);
+          usageFetchPending = false;
+          renderCodexUsage();
+        }
+      }
+
+      function renderCodexUsage() {
+        const age = Date.now() - Date.parse(codexStatus?.timestamp);
+        const fresh = codexStatus?.state === 'ok' && Number.isFinite(age) && age >= -60000 && age < 300000;
+        const windows = fresh && Array.isArray(codexStatus.windows)
+          ? codexStatus.windows.filter(item => Number.isFinite(item.remainingPercent)) : [];
+        const remaining = windows.length
+          ? Math.max(0, Math.min(100, ...windows.map(item => item.remainingPercent))) : null;
+        const resets = fresh && Number.isInteger(codexStatus.availableResets) && codexStatus.availableResets >= 0
+          ? codexStatus.availableResets : null;
+        codexUsageEl.querySelector('span').textContent = remaining == null ? 'Codex --' : `Codex ${Math.floor(remaining)}%`;
+        codexUsageEl.style.setProperty('--usage-fill', `${remaining ?? 0}%`);
+        if (remaining == null) {
+          codexUsageEl.removeAttribute('aria-valuenow');
+          codexUsageEl.setAttribute('aria-valuetext', 'Usage unavailable');
+        } else {
+          codexUsageEl.setAttribute('aria-valuenow', String(remaining));
+          codexUsageEl.setAttribute('aria-valuetext', `${Math.floor(remaining)}% remaining`);
+        }
+        codexResetsEl.querySelector('span').textContent = resets == null ? 'Resets --' : `Resets ${resets}`;
+        codexUsageEl.classList.toggle('unavailable', remaining == null);
+        codexResetsEl.classList.toggle('unavailable', resets == null);
+        codexUsageEl.classList.toggle('low', remaining != null && remaining <= 10);
+        const updated = fresh ? `Updated ${new Date(codexStatus.timestamp).toLocaleTimeString()}` : 'Usage unavailable or older than 5 minutes';
+        const details = windows.map(item => {
+          const minutes = item.windowDurationMins;
+          const period = minutes === 10080 ? 'Weekly' : minutes === 300 ? '5-hour' : minutes ? `${minutes} min` : item.name;
+          const resetTime = Number.isFinite(item.resetsAt) ? `; renews ${new Date(item.resetsAt * 1000).toLocaleString()}` : '';
+          return `${period}: ${Math.floor(item.remainingPercent)}% remaining${resetTime}`;
+        });
+        codexUsageEl.title = ['Codex account usage remaining (lowest active window)', ...details, updated].join('\n');
+        codexResetsEl.title = [resets == null ? 'Available reset count unavailable' : `${resets} available Codex usage resets`, 'Read-only; no reset is consumed', updated].join('\n');
       }
 
       function updateBluetoothAvailability() {

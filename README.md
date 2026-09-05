@@ -113,6 +113,25 @@ the keymap-preservation and nested-workspace regression checks.
 
 ## Updating and checking
 
+### Codex usage in the bar
+
+The two bar indicators show Codex account usage **remaining** and available
+earned resets. Hover for each quota window and renewal time. When there are two
+quota windows, the compact percentage is the lower remaining value.
+
+The existing wireless worker reads `account/rateLimits/read` through the locally
+installed Codex CLI every two minutes. It uses the existing sign-in; no API key,
+chat, or reset redemption is needed. This is display-only and never consumes a
+reset. See the [official app-server documentation](https://learn.chatgpt.com/docs/app-server).
+Missing or failed reads display `--`, as does a cache older than five minutes.
+Only percentages, renewal times, and the reset count are saved in the local bar
+cache; account IDs and credentials are not copied. The cache is ignored by Git.
+
+Run `powershell.exe -NoProfile -File .\tests\test-codex-usage.ps1` to test the
+usage conversion and cache failure handling without making network requests.
+
+### Apply updates
+
 ```powershell
 git pull
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1

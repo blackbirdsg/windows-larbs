@@ -50,7 +50,7 @@ function Get-OpenProjectWindows {
     $windowsResult.data.windows |
       Where-Object {
         $_.processName -eq 'brave' -and
-        ($_.title -match 'OpenProject|Project management|openproject\.dta\.internal')
+        ($_.title -match 'OpenProject|Project management')
       }
   )
 }
