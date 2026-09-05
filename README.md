@@ -90,6 +90,27 @@ Never force-add `settings.local.psd1` to a public repository.
 The full launcher list is maintained in
 `glazewm/glazewm-shortcuts.html` and opens with `Alt+g`.
 
+### ChatGPT windows across workspaces
+
+`Alt+c` reuses a window from the main ChatGPT instance in the current workspace,
+or invokes the app's native New Window command and moves the result there.
+All new windows belong to the same app process and share its live sidebar state.
+The launcher discovers the installed app dynamically after updates.
+
+The first use adds `Ctrl+Shift+F12` for `newWindow` to the app's `keybindings.json`,
+backing up that file and preserving unrelated shortcuts. A conflicting shortcut
+is reported instead of replaced. Restart ChatGPT after saving work if the app
+does not pick up the binding immediately. No app bundle changes are required.
+
+Older launchers created separate profiles under
+`%LOCALAPPDATA%\larbs-windows-state\codex-instances`. Finish work in those old
+windows, close them normally, and use `Alt+c` to replace them with shared windows.
+The launcher does not terminate old instances or delete their profile data.
+Until they are closed, those older instances can still have stale sidebar state.
+
+Run `powershell.exe -NoProfile -File .\tests\test-codex-native-window.ps1` for
+the keymap-preservation and nested-workspace regression checks.
+
 ## Updating and checking
 
 ```powershell
