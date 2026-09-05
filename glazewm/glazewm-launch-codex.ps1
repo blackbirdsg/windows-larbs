@@ -1,3 +1,6 @@
+[CmdletBinding()]
+param([string] $TargetWorkspace = '')
+
 $ErrorActionPreference = 'Stop'
 
 $profileRoot = Split-Path -Parent $PSScriptRoot
@@ -78,24 +81,102 @@ function Get-CodexWindows {
   )
 }
 
-function Find-NewCodexWindow {
-  param([string[]]$BeforeIds)
+function Initialize-CodexWindowProcessApi {
+  if ('CodexWindowNativeMethods' -as [type]) {
+    return
+  }
 
-  Get-CodexWindows |
-    Where-Object { $_.id -notin $BeforeIds } |
-    Select-Object -First 1
+  Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class CodexWindowNativeMethods {
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")]
+  public static extern short GetAsyncKeyState(int key);
+  [DllImport("user32.dll")]
+  private static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
+
+  public static void NewWindow(IntPtr expectedWindow) {
+    if (GetForegroundWindow() != expectedWindow)
+      throw new InvalidOperationException("ChatGPT is no longer focused; native shortcut cancelled.");
+    keybd_event(0x11, 0, 0, UIntPtr.Zero);
+    keybd_event(0x10, 0, 0, UIntPtr.Zero);
+    try {
+      keybd_event(0x7B, 0, 0, UIntPtr.Zero);
+      keybd_event(0x7B, 0, 2, UIntPtr.Zero);
+    } finally {
+      keybd_event(0x10, 0, 2, UIntPtr.Zero);
+      keybd_event(0x11, 0, 2, UIntPtr.Zero);
+    }
+  }
+}
+'@
+}
+
+function Get-CodexWindowProcessId {
+  param($Window)
+
+  if (-not $Window.handle) {
+    return 0
+  }
+
+  try {
+    Initialize-CodexWindowProcessApi
+    [uint32]$processId = 0
+    [void][CodexWindowNativeMethods]::GetWindowThreadProcessId(
+      [IntPtr]::new([int64]$Window.handle),
+      [ref]$processId
+    )
+    if (-not $processId) {
+      return 0
+    }
+
+    return [int]$processId
+  } catch {
+    Write-LauncherLog "Could not inspect ChatGPT window '$($Window.id)': $($_.Exception.Message)"
+    return 0
+  }
+}
+
+function Get-PrimaryCodexProcess {
+  # Legacy per-workspace profiles must never be used as the shared app instance.
+  Get-CimInstance Win32_Process -Filter "Name = 'ChatGPT.exe' OR Name = 'Codex.exe'" -ErrorAction Stop |
+    Where-Object {
+      $_.CommandLine -and $_.CommandLine -notmatch '(?i)--type=|--user-data-dir' -and
+      $_.ExecutablePath -match '(?i)\\(app\\)?(ChatGPT|Codex)\.exe$' -and
+      $_.ExecutablePath -match '(?i)WindowsApps\\OpenAI\.'
+    } | Sort-Object CreationDate | Select-Object -First 1
+}
+
+function Test-CodexContainerContains {
+  param($Container, [string]$WindowId)
+  if ($Container.id -eq $WindowId) { return $true }
+  foreach ($child in $Container.children) {
+    if (Test-CodexContainerContains $child $WindowId) { return $true }
+  }
+  return $false
+}
+
+function Get-PrimaryCodexWindows {
+  param([int]$PrimaryProcessId)
+  @(Get-CodexWindows | Where-Object { (Get-CodexWindowProcessId $_) -eq $PrimaryProcessId })
 }
 
 function Wait-ForNewCodexWindow {
   param(
     [string[]]$BeforeIds,
+    [int]$PrimaryProcessId,
     [int]$TimeoutMilliseconds
   )
 
   $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
   do {
     Start-Sleep -Milliseconds 250
-    $newWindow = Find-NewCodexWindow $BeforeIds
+    $newWindow = Get-PrimaryCodexWindows $PrimaryProcessId |
+      Where-Object { $_.id -notin $BeforeIds } | Select-Object -First 1
     if ($newWindow) {
       return $newWindow
     }
@@ -104,62 +185,20 @@ function Wait-ForNewCodexWindow {
   return $null
 }
 
-function Initialize-CodexAutomation {
-  Add-Type -AssemblyName UIAutomationClient
-  Add-Type -AssemblyName UIAutomationTypes
-}
-
-function Test-CodexWindowHasStartupError {
-  param($Window)
-
-  try {
-    Initialize-CodexAutomation
-    $root = [Windows.Automation.AutomationElement]::FromHandle(
-      [IntPtr]::new([int64]$Window.handle)
-    )
-    if (-not $root) {
-      return $false
-    }
-
-    $errorCondition = [Windows.Automation.PropertyCondition]::new(
-      [Windows.Automation.AutomationElement]::NameProperty,
-      'Oops, an error has occurred'
-    )
-    return $null -ne $root.FindFirst(
-      [Windows.Automation.TreeScope]::Descendants,
-      $errorCondition
-    )
-  } catch {
-    return $false
-  }
-}
-
-function Get-UsableCodexWindowInWorkspace {
-  param([string]$WorkspaceId)
-
-  $candidates = @(Get-CodexWindows | Where-Object { $_.parentId -eq $WorkspaceId })
-  foreach ($candidate in $candidates) {
-    if (Test-CodexWindowHasStartupError $candidate) {
-      Write-LauncherLog "Closing failed Codex window '$($candidate.id)' before relaunch."
-      & $cli command --id $candidate.id close | Out-Null
-      Start-Sleep -Milliseconds 250
-      continue
-    }
-
-    return $candidate
-  }
-
-  return $null
-}
-
 function Resolve-CodexExecutable {
-  $package = Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue |
-    Sort-Object Version -Descending |
-    Select-Object -First 1
-  if ($package) {
-    $candidate = Join-Path $package.InstallLocation 'app\ChatGPT.exe'
-    if (Test-Path -LiteralPath $candidate) {
-      return $candidate
+  $packages = @(
+    Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue
+    Get-AppxPackage -Name 'OpenAI.ChatGPT' -ErrorAction SilentlyContinue
+    Get-AppxPackage -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -match '^OpenAI\.(Codex|ChatGPT)' }
+  ) | Sort-Object Version -Descending -Unique
+
+  foreach ($package in $packages) {
+    foreach ($relativePath in @('app\ChatGPT.exe', 'ChatGPT.exe', 'app\Codex.exe')) {
+      $candidate = Join-Path $package.InstallLocation $relativePath
+      if (Test-Path -LiteralPath $candidate) {
+        return $candidate
+      }
     }
   }
 
@@ -173,89 +212,43 @@ function Resolve-CodexExecutable {
   throw 'The installed ChatGPT executable was not found.'
 }
 
-function Start-CodexWorkspaceInstance {
-  param([string]$WorkspaceName)
-
-  $profileKey = ($WorkspaceName -replace '[^A-Za-z0-9._-]', '_').Trim('_')
-  if (-not $profileKey) {
-    $profileKey = 'default'
-  }
-
-  $instancePath = Join-Path $env:LOCALAPPDATA "larbs-windows-state\codex-instances\workspace-$profileKey"
-  New-Item -ItemType Directory -Path $instancePath -Force | Out-Null
-
+function Start-PrimaryCodexInstance {
   $executable = Resolve-CodexExecutable
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = $executable
-  $startInfo.Arguments = '--user-data-dir="{0}"' -f $instancePath
   $startInfo.WorkingDirectory = Split-Path -Parent $executable
   $startInfo.UseShellExecute = $false
-  $startInfo.EnvironmentVariables['CODEX_ELECTRON_USER_DATA_PATH'] = $instancePath
+  $startInfo.EnvironmentVariables.Remove('CODEX_ELECTRON_USER_DATA_PATH')
 
   $process = [Diagnostics.Process]::Start($startInfo)
   if (-not $process) {
-    throw "Failed to start the Codex instance for workspace '$WorkspaceName'."
+    throw 'Failed to start the shared ChatGPT instance.'
   }
 
-  Write-LauncherLog "Started isolated Codex process '$($process.Id)' for workspace '$WorkspaceName'."
+  Write-LauncherLog "Requested shared ChatGPT startup (PID $($process.Id))."
 }
 
-function Enable-CodexWorkMode {
-  param(
-    $Window,
-    [int]$TimeoutMilliseconds = 30000
-  )
-
-  Initialize-CodexAutomation
-  $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
-
+function Request-NativeCodexWindow {
+  param($SourceWindow)
+  Initialize-CodexWindowProcessApi
+  # The physical Alt+C chord must be released before sending an app shortcut.
+  $deadline = [DateTime]::UtcNow.AddSeconds(3)
   do {
-    try {
-      $root = [Windows.Automation.AutomationElement]::FromHandle(
-        [IntPtr]::new([int64]$Window.handle)
-      )
-      if ($root) {
-        $errorCondition = [Windows.Automation.PropertyCondition]::new(
-          [Windows.Automation.AutomationElement]::NameProperty,
-          'Oops, an error has occurred'
-        )
-        if ($root.FindFirst([Windows.Automation.TreeScope]::Descendants, $errorCondition)) {
-          throw 'The isolated Codex window entered the renderer error screen.'
-        }
-
-        $workCondition = [Windows.Automation.AndCondition]::new(@(
-          [Windows.Automation.PropertyCondition]::new(
-            [Windows.Automation.AutomationElement]::NameProperty,
-            'Work'
-          ),
-          [Windows.Automation.PropertyCondition]::new(
-            [Windows.Automation.AutomationElement]::ControlTypeProperty,
-            [Windows.Automation.ControlType]::Button
-          )
-        ))
-        $workButton = $root.FindFirst(
-          [Windows.Automation.TreeScope]::Descendants,
-          $workCondition
-        )
-        if ($workButton) {
-          $toggle = $workButton.GetCurrentPattern(
-            [Windows.Automation.TogglePattern]::Pattern
-          )
-          if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) {
-            $toggle.Toggle()
-            Start-Sleep -Milliseconds 750
-          }
-          return $true
-        }
-      }
-    } catch [Windows.Automation.ElementNotAvailableException] {
-      # The renderer can replace its accessibility tree while loading.
-    }
-
-    Start-Sleep -Milliseconds 350
+    $held = @(0x12, 0x11, 0x10, 0x43 | Where-Object {
+      ([CodexWindowNativeMethods]::GetAsyncKeyState($_) -band 0x8000) -ne 0
+    })
+    if ($held.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 40
   } while ([DateTime]::UtcNow -lt $deadline)
+  if ($held.Count -gt 0) { throw 'Release Alt+C before requesting a native window.' }
 
-  return $false
+  & $cli command focus --container-id $SourceWindow.id | Out-Null
+  $deadline = [DateTime]::UtcNow.AddSeconds(2)
+  while ([CodexWindowNativeMethods]::GetForegroundWindow().ToInt64() -ne $SourceWindow.handle) {
+    if ([DateTime]::UtcNow -ge $deadline) { throw 'Could not focus the shared ChatGPT window.' }
+    Start-Sleep -Milliseconds 50
+  }
+  [CodexWindowNativeMethods]::NewWindow([IntPtr]::new([int64]$SourceWindow.handle))
 }
 
 function Focus-WorkspaceIfNeeded {
@@ -290,10 +283,9 @@ function Move-CodexWindowToTarget {
     & $cli command --id $WindowId move --workspace $TargetWorkspace | Out-Null
     Start-Sleep -Milliseconds 300
 
-    $managedWindow = Get-CodexWindows |
-      Where-Object { $_.id -eq $WindowId } |
-      Select-Object -First 1
-    if ($managedWindow.parentId -eq $TargetWorkspaceId) {
+    $workspace = (Invoke-GlazeQuery @('query', 'workspaces')).data.workspaces |
+      Where-Object { $_.name -eq $TargetWorkspace } | Select-Object -First 1
+    if ($workspace -and (Test-CodexContainerContains $workspace $WindowId)) {
       $placed = $true
       break
     }
@@ -335,6 +327,17 @@ try {
 
   Start-CodexVimium
 
+  & (Join-Path $PSScriptRoot 'configure-codex-native-window.ps1')
+
+  if ($TargetWorkspace) {
+    $requested = (Invoke-GlazeQuery @('query', 'workspaces')).data.workspaces |
+      Where-Object { $_.name -eq $TargetWorkspace } | Select-Object -First 1
+    # With toggle_workspace_on_refocus enabled, focusing the active workspace leaves it.
+    if (-not $requested.hasFocus) {
+      & $cli command focus --workspace $TargetWorkspace | Out-Null
+    }
+  }
+
   $workspacesResult = Invoke-GlazeQuery @('query', 'workspaces')
   $targetWorkspaceObject = $workspacesResult.data.workspaces |
     Where-Object { $_.hasFocus } |
@@ -350,38 +353,67 @@ try {
     $targetContainerId = $targetWorkspaceObject.childFocusOrder[0]
   }
 
-  $existingCodexWindow = Get-UsableCodexWindowInWorkspace $targetWorkspaceObject.id
+  $primary = Get-PrimaryCodexProcess
+  if (-not $primary) {
+    Start-PrimaryCodexInstance
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    do {
+      Start-Sleep -Milliseconds 250
+      $primary = Get-PrimaryCodexProcess
+      $primaryWindows = if ($primary) { @(Get-PrimaryCodexWindows $primary.ProcessId) } else { @() }
+    } while ($primaryWindows.Count -eq 0 -and [DateTime]::UtcNow -lt $deadline)
+    if ($primaryWindows.Count -eq 0) { throw 'The shared ChatGPT instance did not expose a window.' }
+    $placed = Move-CodexWindowToTarget $primaryWindows[0].id $targetWorkspace $targetWorkspaceObject.id
+    if (-not $placed) { throw 'The first shared ChatGPT window could not be placed in the requested workspace.' }
+    Write-LauncherLog "Started shared ChatGPT window '$($primaryWindows[0].id)' in workspace '$targetWorkspace'."
+    return
+  }
+
+  $primaryWindows = @(Get-PrimaryCodexWindows $primary.ProcessId)
+  if ($primaryWindows.Count -eq 0) {
+    # A tray-only instance is activated by a normal second launch, still using one profile.
+    Start-PrimaryCodexInstance
+    $window = Wait-ForNewCodexWindow @() $primary.ProcessId 15000
+    if (-not $window) { throw 'The shared ChatGPT instance did not restore a window.' }
+    $placed = Move-CodexWindowToTarget $window.id $targetWorkspace $targetWorkspaceObject.id
+    if (-not $placed) { throw 'The restored ChatGPT window could not be placed in the requested workspace.' }
+    Write-LauncherLog "Restored shared ChatGPT window '$($window.id)' in workspace '$targetWorkspace'."
+    return
+  }
+
+  $existingCodexWindow = $primaryWindows | Where-Object {
+    Test-CodexContainerContains $targetWorkspaceObject $_.id
+  } | Select-Object -First 1
   if ($existingCodexWindow) {
-    Focus-WorkspaceIfNeeded $targetWorkspace | Out-Null
     & $cli command focus --container-id $existingCodexWindow.id | Out-Null
-    Write-LauncherLog "Focused existing Codex window '$($existingCodexWindow.id)' in workspace '$targetWorkspace'."
+    Write-LauncherLog "Reused shared ChatGPT window '$($existingCodexWindow.id)' in workspace '$targetWorkspace'."
     return
   }
 
   $beforeCodexIds = @(Get-CodexWindows | ForEach-Object { $_.id })
   $newWindow = $null
 
-  Write-LauncherLog "Alt+C requested from workspace '$targetWorkspace'; existing windows: $($beforeCodexIds.Count)."
+  Write-LauncherLog "Alt+C requested from workspace '$targetWorkspace'; shared process: $($primary.ProcessId)."
 
-  Start-CodexWorkspaceInstance $targetWorkspace
-  $newWindow = Wait-ForNewCodexWindow $beforeCodexIds 45000
+  Request-NativeCodexWindow $primaryWindows[0]
+  $newWindow = Wait-ForNewCodexWindow $beforeCodexIds $primary.ProcessId 15000
 
   if ($newWindow) {
     $placed = Move-CodexWindowToTarget $newWindow.id $targetWorkspace $targetWorkspaceObject.id
-    $workModeReady = Enable-CodexWorkMode $newWindow
-    if (-not $workModeReady) {
-      Write-LauncherLog "Created window '$($newWindow.id)', but its Work mode control did not become ready."
-    } elseif ($placed) {
-      Write-LauncherLog "Created isolated Work window '$($newWindow.id)' in workspace '$targetWorkspace'."
+    if ($placed) {
+      Write-LauncherLog "Created native ChatGPT window '$($newWindow.id)' in workspace '$targetWorkspace' using shared PID $($primary.ProcessId)."
     } else {
-      Write-LauncherLog "Created isolated Work window '$($newWindow.id)', but GlazeWM did not confirm placement in workspace '$targetWorkspace'."
+      throw "Native ChatGPT window '$($newWindow.id)' appeared, but placement in workspace '$targetWorkspace' was not confirmed."
     }
   } else {
     Return-ToTargetWorkspace $targetWorkspace $targetContainerId
-    Write-LauncherLog "No new managed ChatGPT window appeared for workspace '$targetWorkspace'."
+    throw 'The native New Window command did not create a window. Restart the main ChatGPT app after saving work to reload its keybindings.'
   }
 } catch {
   Write-LauncherLog "Launcher error: $($_.Exception.Message)"
+  if ($targetWorkspace) { Return-ToTargetWorkspace $targetWorkspace $targetContainerId }
+  Write-Error $_ -ErrorAction Continue
+  exit 1
 } finally {
   if ($lockTaken) {
     $mutex.ReleaseMutex()

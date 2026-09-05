@@ -18,3 +18,6 @@ jobs:
       - name: Render portable runtime
         shell: powershell
         run: .\install.ps1 -RuntimeOnly -InstallRoot "$env:RUNNER_TEMP\larbs-windows" -SettingsPath .\settings.example.psd1
+      - name: Test native ChatGPT window helpers
+        shell: powershell
+        run: .\tests\test-codex-native-window.ps1
