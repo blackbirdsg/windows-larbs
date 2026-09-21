@@ -52,6 +52,17 @@ try {
   $workspace = @{ id='workspace';children=@(@{id='split';children=@(@{id='window';children=@()})}) }
   Assert-True (Test-CodexContainerContains $workspace 'window') 'Find a window inside a nested tiling split.'
   Assert-True (-not (Test-CodexContainerContains $workspace 'elsewhere')) 'Do not reuse a window from another workspace.'
+  $fn = $ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Select-CodexShortcutWindow'}, $true)
+  . ([scriptblock]::Create($fn.Extent.Text))
+  $minimized = @{id='minimized';state=@{type='minimized'};hasFocus=$false;displayState='hidden'}
+  $hidden = @{id='hidden';state=@{type='tiling'};hasFocus=$false;displayState='hidden'}
+  $visible = @{id='visible';state=@{type='tiling'};hasFocus=$false;displayState='shown'}
+  $focused = @{id='focused';state=@{type='tiling'};hasFocus=$true;displayState='shown'}
+  Assert-True ((Select-CodexShortcutWindow @($minimized,$hidden,$visible,$focused)).id -eq 'focused') 'Prefer the focused app window over query order.'
+  Assert-True ((Select-CodexShortcutWindow @($minimized,$hidden,$visible)).id -eq 'visible') 'Prefer a visible window to a minimized first window.'
+  Assert-True ((Select-CodexShortcutWindow @($minimized,$hidden)).id -eq 'hidden') 'Prefer a non-minimized window on another workspace.'
+  Assert-True ((Select-CodexShortcutWindow @($minimized)).id -eq 'minimized') 'Keep a minimized-only window available for restoration.'
+  Assert-True ($null -eq (Select-CodexShortcutWindow @())) 'An empty window list does not invent a source.'
 } finally {
   $resolved = [IO.Path]::GetFullPath($testDirectory)
   $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'

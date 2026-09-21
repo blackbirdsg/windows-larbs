@@ -97,6 +97,10 @@ public static class CodexWindowNativeMethods {
   [DllImport("user32.dll")]
   public static extern short GetAsyncKeyState(int key);
   [DllImport("user32.dll")]
+  public static extern bool IsIconic(IntPtr hWnd);
+  [DllImport("user32.dll")]
+  public static extern bool ShowWindowAsync(IntPtr hWnd, int command);
+  [DllImport("user32.dll")]
   private static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
 
   public static void NewWindow(IntPtr expectedWindow) {
@@ -165,6 +169,32 @@ function Get-PrimaryCodexWindows {
   @(Get-CodexWindows | Where-Object { (Get-CodexWindowProcessId $_) -eq $PrimaryProcessId })
 }
 
+function Select-CodexShortcutWindow {
+  param([object[]]$Windows)
+  # GlazeWM query order is not focus order and can start with a minimized window.
+  $Windows | Sort-Object @{ Expression = {
+    if ($_.state.type -eq 'minimized') { 3 }
+    elseif ($_.hasFocus) { 0 }
+    elseif ($_.displayState -eq 'shown') { 1 }
+    else { 2 }
+  } } | Select-Object -First 1
+}
+
+function Restore-CodexWindowIfMinimized {
+  param($Window)
+  Initialize-CodexWindowProcessApi
+  $handle = [IntPtr]::new([int64]$Window.handle)
+  if ([CodexWindowNativeMethods]::IsIconic($handle)) {
+    Write-LauncherLog "Restoring minimized ChatGPT window '$($Window.id)'."
+    [void][CodexWindowNativeMethods]::ShowWindowAsync($handle, 9)
+    $deadline = [DateTime]::UtcNow.AddSeconds(2)
+    while ([CodexWindowNativeMethods]::IsIconic($handle)) {
+      if ([DateTime]::UtcNow -ge $deadline) { throw 'Could not restore the minimized ChatGPT window.' }
+      Start-Sleep -Milliseconds 50
+    }
+  }
+}
+
 function Wait-ForNewCodexWindow {
   param(
     [string[]]$BeforeIds,
@@ -231,6 +261,7 @@ function Start-PrimaryCodexInstance {
 function Request-NativeCodexWindow {
   param($SourceWindow)
   Initialize-CodexWindowProcessApi
+  Restore-CodexWindowIfMinimized $SourceWindow
   # The physical Alt+C chord must be released before sending an app shortcut.
   $deadline = [DateTime]::UtcNow.AddSeconds(3)
   do {
@@ -248,6 +279,8 @@ function Request-NativeCodexWindow {
     if ([DateTime]::UtcNow -ge $deadline) { throw 'Could not focus the shared ChatGPT window.' }
     Start-Sleep -Milliseconds 50
   }
+  # Foreground activation precedes Electron's renderer focus event.
+  Start-Sleep -Milliseconds 200
   [CodexWindowNativeMethods]::NewWindow([IntPtr]::new([int64]$SourceWindow.handle))
 }
 
@@ -385,6 +418,7 @@ try {
     Test-CodexContainerContains $targetWorkspaceObject $_.id
   } | Select-Object -First 1
   if ($existingCodexWindow) {
+    Restore-CodexWindowIfMinimized $existingCodexWindow
     & $cli command focus --container-id $existingCodexWindow.id | Out-Null
     Write-LauncherLog "Reused shared ChatGPT window '$($existingCodexWindow.id)' in workspace '$targetWorkspace'."
     return
@@ -395,7 +429,9 @@ try {
 
   Write-LauncherLog "Alt+C requested from workspace '$targetWorkspace'; shared process: $($primary.ProcessId)."
 
-  Request-NativeCodexWindow $primaryWindows[0]
+  $sourceWindow = Select-CodexShortcutWindow $primaryWindows
+  Write-LauncherLog "Native shortcut source '$($sourceWindow.id)' (state: $($sourceWindow.state.type); display: $($sourceWindow.displayState))."
+  Request-NativeCodexWindow $sourceWindow
   $newWindow = Wait-ForNewCodexWindow $beforeCodexIds $primary.ProcessId 15000
 
   if ($newWindow) {
