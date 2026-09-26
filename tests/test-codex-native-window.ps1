@@ -63,6 +63,10 @@ try {
   Assert-True ((Select-CodexShortcutWindow @($minimized,$hidden)).id -eq 'hidden') 'Prefer a non-minimized window on another workspace.'
   Assert-True ((Select-CodexShortcutWindow @($minimized)).id -eq 'minimized') 'Keep a minimized-only window available for restoration.'
   Assert-True ($null -eq (Select-CodexShortcutWindow @())) 'An empty window list does not invent a source.'
+  $source = Get-Content -LiteralPath $launcher -Raw
+  $captureOffset = $source.IndexOf('$targetWorkspace = $targetWorkspaceObject.name')
+  $companionCalls = @($ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Start-CodexVimium'}, $true))
+  Assert-True ($captureOffset -ge 0 -and $companionCalls.Count -eq 1 -and $captureOffset -lt $companionCalls[0].Extent.StartOffset) 'Capture the requested workspace before optional companion startup.'
 } finally {
   $resolved = [IO.Path]::GetFullPath($testDirectory)
   $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'

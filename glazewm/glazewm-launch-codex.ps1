@@ -358,10 +358,8 @@ try {
     return
   }
 
-  Start-CodexVimium
-
-  & (Join-Path $PSScriptRoot 'configure-codex-native-window.ps1')
-
+  $launchTimer = [Diagnostics.Stopwatch]::StartNew()
+  Write-LauncherLog 'Alt+C launcher entered; capturing the target workspace.'
   if ($TargetWorkspace) {
     $requested = (Invoke-GlazeQuery @('query', 'workspaces')).data.workspaces |
       Where-Object { $_.name -eq $TargetWorkspace } | Select-Object -First 1
@@ -386,6 +384,15 @@ try {
     $targetContainerId = $targetWorkspaceObject.childFocusOrder[0]
   }
 
+  Write-LauncherLog "Target workspace '$targetWorkspace' captured after $($launchTimer.ElapsedMilliseconds)ms."
+  & (Join-Path $PSScriptRoot 'configure-codex-native-window.ps1')
+  try {
+    Start-CodexVimium
+  } catch {
+    Write-LauncherLog "Optional Vimium companion unavailable: $($_.Exception.Message)"
+  }
+  Write-LauncherLog "Shortcut preparation completed after $($launchTimer.ElapsedMilliseconds)ms."
+
   $primary = Get-PrimaryCodexProcess
   if (-not $primary) {
     Start-PrimaryCodexInstance
@@ -403,6 +410,7 @@ try {
   }
 
   $primaryWindows = @(Get-PrimaryCodexWindows $primary.ProcessId)
+  Write-LauncherLog "Shared window discovery completed after $($launchTimer.ElapsedMilliseconds)ms."
   if ($primaryWindows.Count -eq 0) {
     # A tray-only instance is activated by a normal second launch, still using one profile.
     Start-PrimaryCodexInstance

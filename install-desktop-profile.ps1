@@ -236,7 +236,8 @@ function Install-GlazeStartupTask {
     -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$startupScript`"" `
     -WorkingDirectory (Split-Path -Parent $startupScript)
   $trigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
-  $trigger.Delay = 'PT8S'
+  # The launcher waits for Explorer itself; a long fixed logon delay is redundant.
+  $trigger.Delay = 'PT3S'
   $principal = New-ScheduledTaskPrincipal `
     -UserId $userId `
     -LogonType Interactive `
